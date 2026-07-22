@@ -78,6 +78,7 @@ InsightFlow/
 ├── LICENSE
 ├── sales_dataset.csv              # Sample dataset for testing
 ├── docs/
+│   ├── aws-minimal.md             # Minimal AWS deployment plan (analysis)
 │   └── images/                    # Screenshot placeholders
 │       ├── dashboard.png          # (add your screenshot)
 │       ├── quality.png
@@ -211,6 +212,14 @@ Try these with `sales_dataset.csv`:
 
 ---
 
+## Cloud deployment (planned)
+
+Minimal AWS plan (S3, container deploy, CloudWatch, HTTPS) — analysis only for now; no app code changes yet:
+
+→ [docs/aws-minimal.md](docs/aws-minimal.md)
+
+---
+
 ## Future Improvements
 
 - Time-series analytics and date-column auto-detection
@@ -220,6 +229,7 @@ Try these with `sales_dataset.csv`:
 - Database connector (PostgreSQL, SQLite)
 - Hugging Face Spaces deployment option
 - User-configurable LLM model selection
+- Follow-on AWS tracks after Minimal (Terraform, Bedrock, Prometheus/Grafana) — see [docs/aws-minimal.md](docs/aws-minimal.md)
 
 ---
 
