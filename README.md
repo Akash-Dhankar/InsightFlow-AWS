@@ -43,6 +43,7 @@ InsightFlow is an interactive data analysis dashboard built with **Streamlit**. 
 | ML / RAG | Scikit-learn (TF-IDF) |
 | PDF | ReportLab |
 | LLM | Ollama + qwen2.5:3b |
+| Cloud (Phase A) | Docker, ECR, ECS Fargate, ALB, S3, CloudWatch, IAM |
 
 ---
 
@@ -76,25 +77,32 @@ CSV Upload
 InsightFlow/
 ├── README.md
 ├── LICENSE
+├── docker-compose.yml             # Local container smoke test
 ├── sales_dataset.csv              # Sample dataset for testing
 ├── docs/
-│   ├── aws-minimal.md             # Minimal AWS deployment plan (analysis)
+│   ├── aws-minimal.md             # Minimal AWS plan + Phase A status
 │   └── images/                    # Screenshot placeholders
-│       ├── dashboard.png          # (add your screenshot)
-│       ├── quality.png
-│       ├── charts.png
-│       └── ai.png
+├── infra/
+│   └── aws/
+│       ├── README.md              # Deploy guide
+│       ├── cloudformation.yaml    # S3, ECR, ECS Fargate, ALB, CloudWatch
+│       ├── deploy.sh              # One-shot stack deploy + image push
+│       └── build-and-push.sh      # Build/push image only
 └── data-analyst-agent/
+    ├── Dockerfile                 # Streamlit container image
     ├── app.py                     # Streamlit entry point
     ├── prompts.py                 # LLM prompt templates
-    ├── requirements.txt             # Python dependencies
+    ├── requirements.txt           # Python dependencies
     ├── test_imports.py            # Quick import smoke test
+    ├── .streamlit/config.toml     # Cloud-friendly Streamlit settings
     └── utils/
         ├── analyzer.py            # CSV loading, stats, quality
         ├── charts.py              # Matplotlib visualizations
         ├── rag.py                 # TF-IDF retrieval
         ├── llm.py                 # Ollama API client
-        └── pdf_report.py          # PDF generation
+        ├── pdf_report.py          # PDF generation
+        ├── s3_storage.py          # Optional S3 artifact uploads
+        └── app_logging.py         # Stdout logging for CloudWatch
 ```
 
 ---
@@ -212,11 +220,27 @@ Try these with `sales_dataset.csv`:
 
 ---
 
-## Cloud deployment (planned)
+## Cloud deployment (Phase A — Minimal AWS)
 
-Minimal AWS plan (S3, container deploy, CloudWatch, HTTPS) — analysis only for now; no app code changes yet:
+Phase A is implemented in-repo: containerized Streamlit, optional S3 artifacts, CloudFormation for ECR / ECS Fargate / ALB / CloudWatch.
 
-→ [docs/aws-minimal.md](docs/aws-minimal.md)
+- Plan & checklist: [docs/aws-minimal.md](docs/aws-minimal.md)
+- Deploy steps: [infra/aws/README.md](infra/aws/README.md)
+
+```bash
+chmod +x infra/aws/deploy.sh infra/aws/build-and-push.sh
+export AWS_REGION=us-east-1
+./infra/aws/deploy.sh
+```
+
+Local container (no AWS):
+
+```bash
+docker compose up --build
+# open http://localhost:8501
+```
+
+Without `INSIGHTFLOW_S3_BUCKET`, the app keeps the original local behavior (no S3 calls).
 
 ---
 
@@ -229,7 +253,7 @@ Minimal AWS plan (S3, container deploy, CloudWatch, HTTPS) — analysis only for
 - Database connector (PostgreSQL, SQLite)
 - Hugging Face Spaces deployment option
 - User-configurable LLM model selection
-- Follow-on AWS tracks after Minimal (Terraform, Bedrock, Prometheus/Grafana) — see [docs/aws-minimal.md](docs/aws-minimal.md)
+- Phase B+: Bedrock or EC2 Ollama, Terraform, Prometheus/Grafana — see [docs/aws-minimal.md](docs/aws-minimal.md)
 
 ---
 
