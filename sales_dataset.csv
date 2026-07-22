@@ -1,0 +1,11 @@
+Month,Product,Revenue,Units_Sold,Region
+Jan,Laptop,50000,25,North
+Jan,Phone,30000,50,South
+Feb,Laptop,55000,28,North
+Feb,Phone,32000,55,South
+Mar,Laptop,70000,35,East
+Mar,Phone,40000,65,West
+Apr,Laptop,65000,32,North
+Apr,Phone,42000,70,South
+May,Laptop,80000,40,East
+May,Phone,50000,80,West
