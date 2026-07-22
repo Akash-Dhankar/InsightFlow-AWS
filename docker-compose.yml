@@ -1,0 +1,21 @@
+# Local container smoke-test for InsightFlow (Phase A image).
+# Does not create AWS resources. Optional S3 via env vars + host credentials.
+services:
+  insightflow:
+    build:
+      context: ./data-analyst-agent
+      dockerfile: Dockerfile
+    ports:
+      - "8501:8501"
+    environment:
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:3b}
+      INSIGHTFLOW_S3_BUCKET: ${INSIGHTFLOW_S3_BUCKET:-}
+      INSIGHTFLOW_S3_PREFIX: ${INSIGHTFLOW_S3_PREFIX:-insightflow}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+      INSIGHTFLOW_LOG_LEVEL: ${INSIGHTFLOW_LOG_LEVEL:-INFO}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

@@ -25,3 +25,9 @@ Thumbs.db
 
 # Large data files (keep only if needed)
 # sales_dataset.csv
+
+# Local / deploy secrets
+*.pem
+.aws/
+cloudformation-outputs.json
+.env.local

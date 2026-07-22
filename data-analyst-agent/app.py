@@ -6,6 +6,7 @@ Run with: streamlit run app.py
 """
 
 import html
+import logging
 from datetime import datetime
 
 import pandas as pd
@@ -18,10 +19,20 @@ from prompts import (
     SYSTEM_PROMPT,
 )
 from utils.analyzer import get_data_quality, get_overview, get_statistics, load_csv
+from utils.app_logging import configure_logging
 from utils.charts import plot_bar_charts, plot_correlation_heatmap, plot_histograms
 from utils.llm import generate_response, is_ollama_running
 from utils.pdf_report import generate_pdf_report
 from utils.rag import build_embeddings, retrieve_relevant_rows
+from utils.s3_storage import (
+    s3_status,
+    upload_chart_png,
+    upload_csv,
+    upload_pdf,
+)
+
+configure_logging()
+logger = logging.getLogger(__name__)
 
 st.set_page_config(
     page_title="InsightFlow - AI Data Analyst",
@@ -520,10 +531,16 @@ st.markdown(
 )
 
 
-def _render_chart_image(img_bytes, caption: str) -> None:
+def _render_chart_image(img_bytes, caption: str, s3_filename: str | None = None) -> None:
     """Render a PNG chart using Streamlit 1.32-compatible image API."""
     img_bytes.seek(0)
     st.image(img_bytes, caption=caption, use_column_width=True)
+    if s3_filename and s3_status().get("ready"):
+        uploaded = st.session_state.setdefault("s3_chart_keys", {})
+        if s3_filename not in uploaded:
+            key = upload_chart_png(img_bytes, s3_filename)
+            uploaded[s3_filename] = key
+            img_bytes.seek(0)
 
 
 def _show_chart_warnings(warnings: list[str]) -> None:
@@ -586,6 +603,7 @@ def _build_context(df: pd.DataFrame) -> dict:
 
 
 ollama_ok = is_ollama_running()
+storage = s3_status()
 
 with st.sidebar:
     st.markdown(
@@ -604,11 +622,17 @@ with st.sidebar:
                     <span class="sidebar-dot" style="background:{'#22c55e' if ollama_ok else '#ef4444'}"></span>
                     <span>{'Ollama Live' if ollama_ok else 'Ollama Offline'}</span>
                 </div>
+                <div class="sidebar-chip">
+                    <span class="sidebar-dot" style="background:{'#22c55e' if storage['ready'] else ('#f59e0b' if storage['enabled'] else '#64748b')}"></span>
+                    <span>{'S3 Ready' if storage['ready'] else ('S3 Error' if storage['enabled'] else 'S3 Off')}</span>
+                </div>
             </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
+    if storage["enabled"]:
+        st.caption(storage["message"])
     st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
     selected_tab = st.radio(
         "Navigation",
@@ -658,6 +682,18 @@ with st.spinner("Loading and validating CSV..."):
 st.session_state["df"] = df
 st.success(f"Loaded **{df.shape[0]:,} rows** and **{df.shape[1]} columns**.")
 
+# Persist upload to S3 once per distinct file (Streamlit reruns the script often).
+upload_fingerprint = f"{uploaded_file.name}:{getattr(uploaded_file, 'size', 0)}"
+if st.session_state.get("s3_csv_fingerprint") != upload_fingerprint:
+    s3_key = upload_csv(uploaded_file, uploaded_file.name)
+    st.session_state["s3_csv_fingerprint"] = upload_fingerprint
+    st.session_state["s3_csv_key"] = s3_key
+    if s3_key:
+        logger.info("CSV stored in S3 as %s", s3_key)
+        st.caption(f"Stored upload in S3: `{s3_key}`")
+    elif storage["enabled"] and not storage["ready"]:
+        st.caption("S3 is configured but not ready — upload kept in session only.")
+
 with st.spinner("Preparing TF-IDF context for Q&A..."):
     rag_state = build_embeddings(df)
     st.session_state["rag_available"] = rag_state["available"]
@@ -704,10 +740,18 @@ with col_pdf:
                 ql = get_data_quality(st.session_state["df"])
                 sts = get_statistics(st.session_state["df"])
                 insights = st.session_state.get("last_insights", "")
-                st.session_state["pdf_buffer"] = generate_pdf_report(ov, ql, sts, insights)
-                st.success("PDF report is ready to download.")
+                pdf_buffer = generate_pdf_report(ov, ql, sts, insights)
+                st.session_state["pdf_buffer"] = pdf_buffer
+                pdf_name = f"insightflow_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+                s3_pdf_key = upload_pdf(pdf_buffer, pdf_name)
+                st.session_state["s3_pdf_key"] = s3_pdf_key
+                if s3_pdf_key:
+                    st.success(f"PDF ready. Also stored in S3: `{s3_pdf_key}`")
+                else:
+                    st.success("PDF report is ready to download.")
             except Exception as exc:
                 st.error(f"PDF generation failed: {exc}")
+                logger.exception("PDF generation failed")
 
     if st.session_state["pdf_buffer"] is not None:
         st.download_button(
@@ -870,7 +914,11 @@ elif selected_tab == "Visualizations":
         if histograms:
             for col_name, img_bytes in histograms:
                 st.markdown(f"**Histogram: {col_name}**")
-                _render_chart_image(img_bytes, caption=f"Distribution of {col_name}")
+                _render_chart_image(
+                    img_bytes,
+                    caption=f"Distribution of {col_name}",
+                    s3_filename=f"histogram_{col_name}.png",
+                )
         elif not hist_warnings:
             st.info("No histograms could be generated for the available numeric columns.")
     else:
@@ -886,7 +934,11 @@ elif selected_tab == "Visualizations":
         if bar_charts:
             for col_name, img_bytes in bar_charts:
                 st.markdown(f"**Bar chart: {col_name}**")
-                _render_chart_image(img_bytes, caption=f"Top values in {col_name}")
+                _render_chart_image(
+                    img_bytes,
+                    caption=f"Top values in {col_name}",
+                    s3_filename=f"bar_{col_name}.png",
+                )
         elif not bar_warnings:
             st.info("No bar charts could be generated for the available categorical columns.")
     else:
@@ -900,7 +952,11 @@ elif selected_tab == "Visualizations":
             heatmap_bytes, heatmap_warnings = plot_correlation_heatmap(df, num_cols)
         _show_chart_warnings(heatmap_warnings)
         if heatmap_bytes:
-            _render_chart_image(heatmap_bytes, caption="Correlation between numerical columns")
+            _render_chart_image(
+                heatmap_bytes,
+                caption="Correlation between numerical columns",
+                s3_filename="correlation_heatmap.png",
+            )
         else:
             st.info("Correlation heatmap could not be generated for this dataset.")
     else:

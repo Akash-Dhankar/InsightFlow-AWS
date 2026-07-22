@@ -5,12 +5,16 @@ Handles all communication with Ollama (qwen2.5:3b).
 - Checks if Ollama is reachable
 - Pulls the model if not already available
 - Sends prompts and returns responses
+
+OLLAMA_BASE_URL / OLLAMA_MODEL can be overridden for AWS (e.g. EC2 Ollama).
 """
+
+import os
 
 import requests
 
-OLLAMA_BASE_URL = "http://localhost:11434"
-MODEL_NAME = "qwen2.5:3b"
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
+MODEL_NAME = os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
 
 
 def is_ollama_running() -> bool:
