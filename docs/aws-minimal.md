@@ -47,9 +47,10 @@ Ollama: optional via OLLAMA_BASE_URL (EC2 later, or Phase B Bedrock)
 | `data-analyst-agent/.streamlit/config.toml` | Headless / `0.0.0.0` config |
 | `data-analyst-agent/utils/s3_storage.py` | Optional S3 uploads |
 | `data-analyst-agent/utils/app_logging.py` | Stdout logging for CloudWatch |
-| `infra/aws/cloudformation.yaml` | S3, ECR, ECS, ALB, IAM, Logs, alarm |
-| `infra/aws/deploy.sh` | One-shot deploy + image push |
-| `infra/aws/build-and-push.sh` | Build/push only |
+| `infra/aws/cloudformation.yaml` | S3, ECR, ECS (DesiredCount=0), ALB, IAM, Logs, alarm |
+| `infra/aws/deploy.sh` | Ordered 3-phase deploy: CFN → image push → scale ECS |
+| `infra/aws/build-and-push.sh` | Build/push image only |
+| `infra/aws/destroy.sh` | Empty S3 + delete stack |
 | `infra/aws/README.md` | Step-by-step deploy guide |
 | `docker-compose.yml` | Local container smoke test |
 
@@ -75,12 +76,13 @@ Ollama: optional via OLLAMA_BASE_URL (EC2 later, or Phase B Bedrock)
 ## Definition of done (checklist)
 
 1. Streamlit image builds (`Dockerfile` / `docker compose build`).
-2. Image pushed to **ECR** via deploy script.
-3. Container runs on **ECS Fargate** behind **ALB**.
-4. **S3** bucket receives uploads/reports when the app runs on AWS.
-5. Logs appear in **CloudWatch** `/ecs/insightflow`.
-6. Unhealthy-host **alarm** exists.
-7. Deploy steps documented in `infra/aws/README.md`.
+2. CloudFormation completes with **DesiredCount=0** (no image pull required).
+3. Image pushed to **ECR**, then ECS scaled to **1** and becomes stable.
+4. Container reachable via **ALB**.
+5. **S3** bucket receives uploads/reports when the app runs on AWS.
+6. Logs appear in **CloudWatch** `/ecs/insightflow`.
+7. Unhealthy-host **alarm** exists.
+8. Deploy/teardown documented in `infra/aws/README.md` (`deploy.sh` / `destroy.sh`).
 
 ---
 
