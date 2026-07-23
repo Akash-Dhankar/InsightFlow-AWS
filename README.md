@@ -86,8 +86,9 @@ InsightFlow/
 │   └── aws/
 │       ├── README.md              # Deploy guide
 │       ├── cloudformation.yaml    # S3, ECR, ECS Fargate, ALB, CloudWatch
-│       ├── deploy.sh              # One-shot stack deploy + image push
-│       └── build-and-push.sh      # Build/push image only
+│       ├── deploy.sh              # 3-phase: CFN (count=0) → push image → scale ECS
+│       ├── build-and-push.sh      # Build/push image only
+│       └── destroy.sh             # Empty S3 + delete stack
 └── data-analyst-agent/
     ├── Dockerfile                 # Streamlit container image
     ├── app.py                     # Streamlit entry point
@@ -228,9 +229,17 @@ Phase A is implemented in-repo: containerized Streamlit, optional S3 artifacts, 
 - Deploy steps: [infra/aws/README.md](infra/aws/README.md)
 
 ```bash
-chmod +x infra/aws/deploy.sh infra/aws/build-and-push.sh
+chmod +x infra/aws/deploy.sh infra/aws/build-and-push.sh infra/aws/destroy.sh
 export AWS_REGION=us-east-1
 ./infra/aws/deploy.sh
+```
+
+If a previous deploy failed/rolled back:
+
+```bash
+FORCE_CLEAN=1 ./infra/aws/deploy.sh
+# or:
+./infra/aws/destroy.sh && ./infra/aws/deploy.sh
 ```
 
 Local container (no AWS):

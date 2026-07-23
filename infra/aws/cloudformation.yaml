@@ -1,7 +1,11 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
-  InsightFlow Minimal AWS (Phase A): S3 artifacts, ECR image, ECS Fargate
-  Streamlit service behind an ALB, CloudWatch Logs, and a basic unhealthy-host alarm.
+  InsightFlow Minimal AWS (Phase A): S3 artifacts, ECR, ECS Fargate Streamlit
+  behind an ALB, CloudWatch Logs, and a basic unhealthy-host alarm.
+
+  IMPORTANT: DesiredCount defaults to 0 so the stack can CREATE_COMPLETE before
+  any container image exists in ECR. deploy.sh builds/pushes the image, then
+  scales the service to 1 and waits for stability.
 
 Parameters:
   ProjectName:
@@ -21,13 +25,16 @@ Parameters:
   ImageTag:
     Type: String
     Default: latest
-    Description: ECR image tag to run
+    Description: ECR image tag the task definition will reference
 
   DesiredCount:
     Type: Number
-    Default: 1
+    Default: 0
     MinValue: 0
     MaxValue: 4
+    Description: >
+      Keep 0 for CloudFormation create/update so the stack does not wait on
+      pulling a missing image. deploy.sh scales to 1 after the image is pushed.
 
   TaskCpu:
     Type: String
@@ -41,10 +48,9 @@ Parameters:
 
   OllamaBaseUrl:
     Type: String
-    Default: http://host.docker.internal:11434
+    Default: http://127.0.0.1:11434
     Description: >
-      Ollama base URL. Use an EC2 private URL when you add Ollama on AWS.
-      Default is a local-dev style host; override for cloud.
+      Ollama base URL. Override with a private EC2 URL when Ollama runs in the VPC.
 
   OllamaModel:
     Type: String
@@ -61,8 +67,6 @@ Conditions:
 Resources:
   ArtifactBucket:
     Type: AWS::S3::Bucket
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
     Properties:
       BucketName: !Sub "${ProjectName}-artifacts-${AWS::AccountId}-${AWS::Region}"
       BucketEncryption:
@@ -90,6 +94,7 @@ Resources:
         ScanOnPush: true
       EncryptionConfiguration:
         EncryptionType: AES256
+      EmptyOnDelete: true
       LifecyclePolicy:
         LifecyclePolicyText: |
           {
@@ -268,6 +273,8 @@ Resources:
         - Type: forward
           TargetGroupArn: !Ref TargetGroup
 
+  # Task definition may reference an image tag that does not exist yet.
+  # That is OK while DesiredCount is 0 — no tasks are started during stack create.
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
@@ -321,7 +328,7 @@ Resources:
       DesiredCount: !Ref DesiredCount
       LaunchType: FARGATE
       TaskDefinition: !Ref TaskDefinition
-      HealthCheckGracePeriodSeconds: 90
+      HealthCheckGracePeriodSeconds: 120
       NetworkConfiguration:
         AwsvpcConfiguration:
           AssignPublicIp: ENABLED
@@ -332,9 +339,14 @@ Resources:
         - ContainerName: streamlit
           ContainerPort: 8501
           TargetGroupArn: !Ref TargetGroup
+      # MinimumHealthyPercent=0 allows 0→1 first deploy and single-task replacements
+      # without requiring a healthy task that does not exist yet.
       DeploymentConfiguration:
         MaximumPercent: 200
-        MinimumHealthyPercent: 50
+        MinimumHealthyPercent: 0
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
       Tags:
         - Key: Project
           Value: !Ref ProjectName
